@@ -98,6 +98,46 @@ def analyze_message_structure(message_data, message_type):
     return found_service_fields
 
 
+def is_service_message(message):
+    """
+    Checks if a message is a service message with proper validation.
+    Fixed to avoid false positives on regular messages.
+    """
+    if not message:
+        return False
+
+    # Check for new chat members (non-empty list)
+    if hasattr(message, 'new_chat_members') and message.new_chat_members:
+        logger.debug(f"Service message: new_chat_members = {message.new_chat_members}")
+        return True
+
+    # Check for left chat member
+    if hasattr(message, 'left_chat_member') and message.left_chat_member:
+        logger.debug(f"Service message: left_chat_member = {message.left_chat_member}")
+        return True
+
+    # Check for other service message types that should be truthy values
+    service_fields = [
+        'new_chat_title', 'new_chat_photo', 'delete_chat_photo',
+        'group_chat_created', 'supergroup_chat_created', 'channel_chat_created',
+        'pinned_message', 'migrate_to_chat_id', 'migrate_from_chat_id',
+        'proximity_alert_triggered', 'forum_topic_created', 'forum_topic_edited',
+        'forum_topic_closed', 'forum_topic_reopened', 'successful_payment',
+        'connected_website', 'passport_data', 'video_chat_started', 'video_chat_ended',
+        'video_chat_participants_invited', 'video_chat_scheduled', 'web_app_data'
+    ]
+
+    for field in service_fields:
+        if hasattr(message, field):
+            value = getattr(message, field)
+            # Check for truthy values, excluding empty lists and False
+            if value and value != [] and value is not False:
+                logger.debug(f"Service message: {field} = {value}")
+                return True
+
+    return False
+
+
 def handle_service_message(update: Update, bot: Bot) -> None:
     """Processes and deletes service messages in chat."""
     logger.debug("=== Starting handle_service_message ===")
@@ -139,39 +179,10 @@ def handle_service_message(update: Update, bot: Bot) -> None:
     logger.debug(f"Message content: text={getattr(message, 'text', None)}, "
                  f"from_user={getattr(message, 'from_user', None)}")
 
-    # Check for service messages - FIXED
-    service_checks = {
-        'new_chat_members': getattr(message, 'new_chat_members', None),
-        'left_chat_member': getattr(message, 'left_chat_member', None),
-        'new_chat_title': getattr(message, 'new_chat_title', None),
-        'new_chat_photo': getattr(message, 'new_chat_photo', None),
-        'delete_chat_photo': getattr(message, 'delete_chat_photo', None),
-        'group_chat_created': getattr(message, 'group_chat_created', None),
-        'supergroup_chat_created': getattr(message, 'supergroup_chat_created', None),
-        'channel_chat_created': getattr(message, 'channel_chat_created', None),
-        'pinned_message': getattr(message, 'pinned_message', None),
-        'proximity_alert_triggered': getattr(message, 'proximity_alert_triggered', None),
-        'forum_topic_created': getattr(message, 'forum_topic_created', None),
-        'forum_topic_edited': getattr(message, 'forum_topic_edited', None),
-        'forum_topic_closed': getattr(message, 'forum_topic_closed', None),
-        'forum_topic_reopened': getattr(message, 'forum_topic_reopened', None),
-        'migrate_to_chat_id': getattr(message, 'migrate_to_chat_id', None),
-        'migrate_from_chat_id': getattr(message, 'migrate_from_chat_id', None),
-    }
-
-    # Log all checks
-    found_service_types = []
-    for check_name, check_value in service_checks.items():
-        if check_value is not None:
-            found_service_types.append(check_name)
-            logger.info(f"Found service message type: {check_name} = {check_value}")
-
-    # FIXED service message check
-    is_service_message = any(check_value is not None for check_value in service_checks.values())
-
-    if is_service_message:
+    # Use the fixed service message detection
+    if is_service_message(message):
         logger.info(f"Confirmed service message in chat {message.chat.id}, "
-                    f"types: {found_service_types}, attempting to delete message {message.message_id}")
+                    f"attempting to delete message {message.message_id}")
 
         # Check that we have all necessary data for deletion
         if not message.message_id:
